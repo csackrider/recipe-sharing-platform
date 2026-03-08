@@ -7,7 +7,10 @@ import { recipeSchema } from '@/lib/validations/recipe'
 
 export type RecipeActionResult = { error: string } | null
 
-export async function createRecipe(data: unknown): Promise<RecipeActionResult> {
+export async function createRecipe(
+  data: unknown,
+  imageUrl?: string
+): Promise<RecipeActionResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'You must be logged in to create a recipe.' }
@@ -21,7 +24,16 @@ export async function createRecipe(data: unknown): Promise<RecipeActionResult> {
 
   const { data: recipe, error } = await supabase
     .from('recipes')
-    .insert({ user_id: user.id, title, instructions, cooking_time, difficulty, category: category ?? null, ingredients })
+    .insert({
+      user_id: user.id,
+      title,
+      instructions,
+      cooking_time,
+      difficulty,
+      category: category ?? null,
+      ingredients,
+      image_url: imageUrl ?? null,
+    })
     .select('id')
     .single()
 
@@ -36,7 +48,8 @@ export async function createRecipe(data: unknown): Promise<RecipeActionResult> {
 
 export async function updateRecipe(
   id: string,
-  data: unknown
+  data: unknown,
+  imageUrl?: string | null
 ): Promise<RecipeActionResult> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -59,9 +72,19 @@ export async function updateRecipe(
 
   const { title, instructions, cooking_time, difficulty, category, ingredients } = parsed.data
 
+  const updatePayload: Record<string, unknown> = {
+    title,
+    instructions,
+    cooking_time,
+    difficulty,
+    category: category ?? null,
+    ingredients,
+  }
+  if (imageUrl !== undefined) updatePayload.image_url = imageUrl
+
   const { error } = await supabase
     .from('recipes')
-    .update({ title, instructions, cooking_time, difficulty, category: category ?? null, ingredients })
+    .update(updatePayload)
     .eq('id', id)
 
   if (error) {

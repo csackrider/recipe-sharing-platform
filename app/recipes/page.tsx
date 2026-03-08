@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { Clock, ChefHat } from 'lucide-react'
@@ -23,6 +24,7 @@ interface RecipeRow {
   difficulty: string
   category: string | null
   created_at: string
+  image_url: string | null
   profiles: { username: string; display_name: string | null } | null
 }
 
@@ -40,7 +42,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
 
   const baseQuery = supabase
     .from('recipes')
-    .select('id, title, cooking_time, difficulty, category, created_at, profiles(username, display_name)')
+    .select('id, title, cooking_time, difficulty, category, created_at, image_url, profiles(username, display_name)')
     .order('created_at', { ascending: false })
     .range(0, 11)
 
@@ -103,7 +105,19 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
                   href={`/recipes/${recipe.id}`}
                   className="group flex flex-col rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
                 >
-                  <div className="mb-4 h-24 w-full rounded-lg bg-gradient-to-br from-orange-400 to-red-400" />
+                  {recipe.image_url ? (
+                    <div className="relative mb-4 h-24 w-full overflow-hidden rounded-lg">
+                      <Image
+                        src={recipe.image_url}
+                        alt={recipe.title}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                      />
+                    </div>
+                  ) : (
+                    <div className="mb-4 h-24 w-full rounded-lg bg-gradient-to-br from-orange-400 to-red-400" />
+                  )}
 
                   <div className="mb-2 flex flex-wrap items-center gap-1.5">
                     {recipe.category && (

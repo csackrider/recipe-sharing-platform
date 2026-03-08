@@ -44,6 +44,7 @@ export default async function EditRecipePage({ params }: EditRecipePageProps) {
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
           <RecipeForm
             recipeId={id}
+            defaultImageUrl={recipe.image_url}
             defaultValues={{
               title: recipe.title,
               instructions: recipe.instructions,

@@ -46,6 +46,7 @@ export interface Database {
           cooking_time: number
           difficulty: 'easy' | 'medium' | 'hard'
           category: string | null
+          image_url: string | null
         }
         Insert: {
           id?: string
@@ -57,6 +58,7 @@ export interface Database {
           cooking_time?: number
           difficulty: 'easy' | 'medium' | 'hard'
           category?: string | null
+          image_url?: string | null
         }
         Update: {
           id?: string
@@ -68,6 +70,47 @@ export interface Database {
           cooking_time?: number
           difficulty?: 'easy' | 'medium' | 'hard'
           category?: string | null
+          image_url?: string | null
+        }
+      }
+      likes: {
+        Row: {
+          id: string
+          user_id: string
+          recipe_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          recipe_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          recipe_id?: string
+          created_at?: string
+        }
+      }
+      saved_recipes: {
+        Row: {
+          id: string
+          user_id: string
+          recipe_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          recipe_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          recipe_id?: string
+          created_at?: string
         }
       }
     }
@@ -82,3 +125,5 @@ export type Profile = Database['public']['Tables']['profiles']['Row']
 export type Recipe = Database['public']['Tables']['recipes']['Row']
 export type RecipeInsert = Database['public']['Tables']['recipes']['Insert']
 export type RecipeUpdate = Database['public']['Tables']['recipes']['Update']
+export type Like = Database['public']['Tables']['likes']['Row']
+export type SavedRecipe = Database['public']['Tables']['saved_recipes']['Row']

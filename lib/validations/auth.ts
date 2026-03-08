@@ -20,5 +20,16 @@ export const signupSchema = z
     path: ['confirmPassword'],
   })
 
+export const changePasswordSchema = z
+  .object({
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string(),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+
 export type LoginFormValues = z.infer<typeof loginSchema>
 export type SignupFormValues = z.infer<typeof signupSchema>
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>

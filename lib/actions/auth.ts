@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { loginSchema, signupSchema } from '@/lib/validations/auth'
+import { loginSchema, signupSchema, changePasswordSchema } from '@/lib/validations/auth'
 
 export async function signIn(
   _prevState: { error: string } | null,
@@ -69,4 +69,26 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut()
   revalidatePath('/', 'layout')
   redirect('/auth/login')
+}
+
+export async function changePassword(
+  data: unknown
+): Promise<{ error: string } | { success: true }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'You must be logged in.' }
+
+  const parsed = changePasswordSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid input.' }
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
+
+  if (error) {
+    console.error('[changePassword]', error.message)
+    return { error: 'Failed to update password. Please try again.' }
+  }
+
+  return { success: true }
 }
