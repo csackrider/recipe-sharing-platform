@@ -1,0 +1,180 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import Link from 'next/link'
+import { Loader2, CheckCircle2 } from 'lucide-react'
+import { signUp } from '@/lib/actions/auth'
+import { signupSchema, type SignupFormValues } from '@/lib/validations/auth'
+import { cn } from '@/lib/utils'
+
+export default function SignupForm() {
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<SignupFormValues>({
+    resolver: zodResolver(signupSchema),
+  })
+
+  const onSubmit = (data: SignupFormValues) => {
+    setServerError(null)
+    startTransition(async () => {
+      const formData = new FormData()
+      formData.append('email', data.email)
+      formData.append('password', data.password)
+      formData.append('confirmPassword', data.confirmPassword)
+
+      const result = await signUp(null, formData)
+      if (result?.success) {
+        setSuccess(true)
+      } else if (result?.error) {
+        setServerError(result.error)
+      }
+    })
+  }
+
+  if (success) {
+    return (
+      <div className="rounded-xl bg-emerald-50 p-6 text-center">
+        <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
+        <h2 className="mb-1 text-base font-semibold text-zinc-900">
+          Check your inbox
+        </h2>
+        <p className="text-sm text-zinc-600">
+          We sent a confirmation link to your email address. Click it to
+          activate your account.
+        </p>
+        <Link
+          href="/auth/login"
+          className="mt-4 inline-block text-sm font-medium text-orange-600 hover:text-orange-700"
+        >
+          Back to login
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div>
+        <label
+          htmlFor="email"
+          className="mb-1.5 block text-sm font-medium text-zinc-700"
+        >
+          Email
+        </label>
+        <input
+          {...register('email')}
+          id="email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          className={cn(
+            'w-full rounded-lg border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400',
+            'focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent',
+            errors.email ? 'border-red-400' : 'border-zinc-200'
+          )}
+        />
+        {errors.email && (
+          <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
+        )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="password"
+          className="mb-1.5 block text-sm font-medium text-zinc-700"
+        >
+          Password
+        </label>
+        <input
+          {...register('password')}
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          className={cn(
+            'w-full rounded-lg border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400',
+            'focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent',
+            errors.password ? 'border-red-400' : 'border-zinc-200'
+          )}
+        />
+        {errors.password ? (
+          <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
+        ) : (
+          <p className="mt-1 text-xs text-zinc-400">
+            Min. 8 characters, one uppercase letter, one number.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label
+          htmlFor="confirmPassword"
+          className="mb-1.5 block text-sm font-medium text-zinc-700"
+        >
+          Confirm password
+        </label>
+        <input
+          {...register('confirmPassword')}
+          id="confirmPassword"
+          type="password"
+          autoComplete="new-password"
+          placeholder="••••••••"
+          className={cn(
+            'w-full rounded-lg border px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400',
+            'focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent',
+            errors.confirmPassword ? 'border-red-400' : 'border-zinc-200'
+          )}
+        />
+        {errors.confirmPassword && (
+          <p className="mt-1 text-xs text-red-500">
+            {errors.confirmPassword.message}
+          </p>
+        )}
+      </div>
+
+      {serverError && (
+        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
+          {serverError}
+        </p>
+      )}
+
+      <button
+        type="submit"
+        disabled={isPending}
+        className={cn(
+          'flex w-full items-center justify-center rounded-lg bg-orange-500 px-4 py-2.5',
+          'text-sm font-medium text-white shadow-sm',
+          'hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2',
+          'disabled:cursor-not-allowed disabled:opacity-60'
+        )}
+      >
+        {isPending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Creating account…
+          </>
+        ) : (
+          'Create account'
+        )}
+      </button>
+
+      <p className="text-center text-sm text-zinc-500">
+        Already have an account?{' '}
+        <Link
+          href="/auth/login"
+          className="font-medium text-orange-600 hover:text-orange-700"
+        >
+          Sign in
+        </Link>
+      </p>
+    </form>
+  )
+}

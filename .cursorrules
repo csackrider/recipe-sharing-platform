@@ -1,0 +1,287 @@
+# Recipe Platform — Cursor Rules
+# Stack: Next.js 14 (App Router) · Supabase · Tailwind CSS · TypeScript
+
+---
+
+## General Principles
+
+- Always use TypeScript. Never use `any` — use proper types or `unknown`.
+- Prefer Server Components by default. Only use `'use client'` when necessary (event handlers, hooks, browser APIs).
+- Follow Next.js 14 App Router conventions strictly (layouts, loading, error, page files).
+- Keep components small and focused. If a component exceeds ~150 lines, split it up.
+- Never hardcode secrets or API keys. Always use environment variables from `.env.local`.
+- Always handle loading and error states explicitly.
+
+---
+
+## Project Structure
+
+Follow this structure exactly:
+
+```
+/app
+  /layout.tsx
+  /page.tsx
+  /auth/login/page.tsx
+  /auth/signup/page.tsx
+  /recipes/page.tsx
+  /recipes/[id]/page.tsx
+  /recipes/new/page.tsx
+  /recipes/[id]/edit/page.tsx
+  /profile/[username]/page.tsx
+  /profile/me/page.tsx
+/components
+  /ui/          # Generic reusable UI (Button, Input, Card, Badge, etc.)
+  /recipes/     # RecipeCard, RecipeForm, IngredientList, StepList, etc.
+  /layout/      # Navbar, Footer, SearchBar
+  /auth/        # LoginForm, SignupForm
+/lib
+  /supabase/
+    client.ts   # Browser Supabase client
+    server.ts   # Server Supabase client
+  /actions/     # Next.js Server Actions
+  /validations/ # Zod schemas
+/types
+  database.ts   # Supabase generated types
+```
+
+---
+
+## TypeScript
+
+- Import Supabase database types from `@/types/database.ts`.
+- Define component prop types inline with `interface` for clarity.
+- Use `Database['public']['Tables']['recipes']['Row']` pattern for table row types.
+- Always type Server Action return values explicitly.
+
+```typescript
+// ✅ Good
+interface RecipeCardProps {
+  recipe: Database['public']['Tables']['recipes']['Row'] & {
+    profiles: Pick<Profile, 'username' | 'display_name' | 'avatar_url'>
+  }
+}
+
+// ❌ Bad
+function RecipeCard({ recipe }: { recipe: any }) {}
+```
+
+---
+
+## Supabase
+
+- Use the **server client** (`@/lib/supabase/server.ts`) in Server Components and Server Actions.
+- Use the **browser client** (`@/lib/supabase/client.ts`) only in Client Components.
+- Always check for errors after every Supabase call.
+- Never expose the service role key to the client.
+
+```typescript
+// ✅ Good — server component
+const supabase = createClient()
+const { data, error } = await supabase.from('recipes').select('*')
+if (error) throw new Error(error.message)
+
+// ❌ Bad — ignoring errors
+const { data } = await supabase.from('recipes').select('*')
+```
+
+- Always use `.single()` when fetching by ID and handle the case where data is null.
+- Use Supabase Storage for all image uploads. Never store base64 images in the database.
+- Always scope storage paths by user ID: `recipe-images/{userId}/{filename}`.
+
+---
+
+## Server Actions
+
+- All mutations (create, update, delete) must be Server Actions in `/lib/actions/`.
+- Always validate input with Zod before touching the database.
+- Always verify the user session at the top of every Server Action.
+- Return a typed result object, never throw raw errors to the client.
+
+```typescript
+// ✅ Good pattern for Server Actions
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+import { recipeSchema } from '@/lib/validations/recipe'
+
+export async function createRecipe(formData: FormData) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Unauthorized' }
+
+  const parsed = recipeSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) return { error: parsed.error.flatten() }
+
+  const { data, error } = await supabase
+    .from('recipes')
+    .insert({ ...parsed.data, user_id: user.id })
+    .select()
+    .single()
+
+  if (error) return { error: error.message }
+  return { data }
+}
+```
+
+---
+
+## Components & React
+
+- Use `async/await` in Server Components for data fetching — no `useEffect` for data fetching.
+- Only use `'use client'` for: forms, interactive UI (likes, saves), modals, toast notifications.
+- Use React Hook Form + Zod for all forms. Never use uncontrolled raw form elements.
+- Use `useTransition` for optimistic UI updates on likes/saves.
+- Never fetch data inside Client Components if it can be done in a Server Component and passed as props.
+
+```typescript
+// ✅ Good — fetch in Server Component, pass as props
+// app/recipes/[id]/page.tsx (Server Component)
+const { data: recipe } = await supabase.from('recipes').select('*').eq('id', id).single()
+return <RecipeDetail recipe={recipe} />
+
+// ❌ Bad — fetching in Client Component unnecessarily
+'use client'
+useEffect(() => {
+  fetch('/api/recipes/' + id).then(...)
+}, [])
+```
+
+---
+
+## Tailwind CSS
+
+- Use Tailwind utility classes only. No inline styles, no CSS modules, no external CSS unless absolutely necessary.
+- Use `clsx` or `cn()` (from `tailwind-merge`) for conditional class names.
+- Mobile-first responsive design. Start with base styles, layer up with `sm:`, `md:`, `lg:`.
+- Use a consistent spacing scale. Stick to `4, 8, 12, 16, 24, 32, 48, 64px` (Tailwind's `1, 2, 3, 4, 6, 8, 12, 16`).
+- Extract repeated class combinations into reusable components, not into `@apply`.
+
+```typescript
+// ✅ Good
+import { cn } from '@/lib/utils'
+<button className={cn('px-4 py-2 rounded-lg font-medium', isActive && 'bg-orange-500 text-white')} />
+
+// ❌ Bad
+<button style={{ padding: '8px 16px' }} className={isActive ? 'active' : ''} />
+```
+
+---
+
+## Authentication & Authorization
+
+- Always use `supabase.auth.getUser()` (not `getSession()`) on the server for security.
+- Protect routes via `middleware.ts` — never rely solely on UI hiding.
+- Always check `user.id === resource.user_id` before allowing edits or deletes.
+- Never trust client-sent `user_id` values — always derive from the server session.
+
+```typescript
+// ✅ Good — derive user_id from session in Server Action
+const { data: { user } } = await supabase.auth.getUser()
+if (!user) return { error: 'Unauthorized' }
+// use user.id, don't accept it from the form
+
+// ❌ Bad
+const userId = formData.get('user_id') // never trust this
+```
+
+---
+
+## Row Level Security (RLS)
+
+- RLS must be enabled on every table. Never disable it.
+- All queries must work correctly with RLS enabled — never use the service role key to bypass RLS in normal app flows.
+- When adding a new table, always write and test RLS policies before using the table in the app.
+
+---
+
+## Forms & Validation
+
+- Define all Zod schemas in `/lib/validations/`.
+- Share the same schema between client-side validation and server-side Server Action validation.
+- Use descriptive error messages in Zod schemas that can be shown directly to users.
+
+```typescript
+// /lib/validations/recipe.ts
+import { z } from 'zod'
+
+export const recipeSchema = z.object({
+  title: z.string().min(3, 'Title must be at least 3 characters').max(100),
+  description: z.string().max(500).optional(),
+  prep_time: z.coerce.number().min(0).max(1440),
+  cook_time: z.coerce.number().min(0).max(1440),
+  servings: z.coerce.number().min(1).max(100),
+  difficulty: z.enum(['easy', 'medium', 'hard']),
+  cuisine: z.string().max(50).optional(),
+})
+```
+
+---
+
+## Image Uploads
+
+- Always validate file type and size before uploading (max 5MB, jpg/png/webp only).
+- Generate unique filenames using `crypto.randomUUID()` to avoid collisions.
+- Store only the public URL in the database, not the storage path.
+- Use Next.js `<Image>` component for all images — never raw `<img>` tags.
+- Add Supabase Storage domain to `next.config.js` `images.remotePatterns`.
+
+```typescript
+// next.config.js
+images: {
+  remotePatterns: [
+    {
+      protocol: 'https',
+      hostname: '*.supabase.co',
+      pathname: '/storage/v1/object/public/**',
+    },
+  ],
+},
+```
+
+---
+
+## Error Handling
+
+- Every page must have an `error.tsx` sibling file.
+- Every async route segment must have a `loading.tsx` with a skeleton UI.
+- Never show raw Supabase or database error messages to the user — log them server-side and show a friendly message.
+- Use toast notifications (e.g. `react-hot-toast` or `sonner`) for mutation feedback.
+
+---
+
+## Performance
+
+- Use Next.js `<Image>` with explicit `width` and `height` or `fill` for all images.
+- Paginate all list queries — never fetch unbounded lists. Default page size: 12.
+- Use `Suspense` boundaries around async Server Components for streaming.
+- Memoize expensive Client Component computations with `useMemo`.
+
+---
+
+## Naming Conventions
+
+| Thing | Convention | Example |
+|---|---|---|
+| Components | PascalCase | `RecipeCard.tsx` |
+| Hooks | camelCase with `use` prefix | `useRecipeLike.ts` |
+| Server Actions | camelCase verb phrases | `createRecipe`, `deleteComment` |
+| Database tables | snake_case plural | `recipes`, `saved_recipes` |
+| Environment variables | SCREAMING_SNAKE_CASE | `NEXT_PUBLIC_SUPABASE_URL` |
+| Zod schemas | camelCase with `Schema` suffix | `recipeSchema` |
+| TypeScript types/interfaces | PascalCase | `Recipe`, `UserProfile` |
+
+---
+
+## What NOT to Do
+
+- Do not use the Pages Router (`/pages` directory). App Router only.
+- Do not use `getServerSideProps` or `getStaticProps`.
+- Do not use `useEffect` for data fetching.
+- Do not store sensitive data (passwords, tokens) in localStorage.
+- Do not use `any` in TypeScript.
+- Do not bypass RLS with the service role key in client-facing code.
+- Do not commit `.env.local` to version control.
+- Do not use raw `<img>` tags — always use Next.js `<Image>`.
+- Do not write mutations directly in components — always use Server Actions.
+- Do not use `router.push` after a Server Action for revalidation — use `revalidatePath` instead.
