@@ -109,14 +109,16 @@ Tests run across multiple browser/device configurations:
 
 ### CI/CD
 
-Playwright tests run automatically via GitHub Actions:
+GitHub Actions workflows (see `.github/workflows/`):
 
-- **On pull requests** targeting `main`
-- **On push** to `main` (after merge)
+| Workflow | When | What |
+|---|---|---|
+| `smoke.yml` | Pull request to `dev` | Fast `@smoke` tests (Chromium), then auto-merge if green (same-repo PRs only) |
+| `full-suite.yml` | After smoke succeeds, or PR to `main` | Full Playwright suite; promotes `dev` → `main` when triggered by smoke |
 
-The HTML test report is uploaded as a build artifact and retained for 14 days. On failure, raw test results (screenshots, traces) are also uploaded.
+HTML reports are uploaded as artifacts. On failure, test results (screenshots, traces) are also uploaded.
 
-See `.github/workflows/playwright.yml` for the full workflow.
+**Public repo / branch protection:** See [.github/BRANCH_PROTECTION.md](.github/BRANCH_PROTECTION.md) for required status check names and security settings.
 
 ## Project Structure
 
@@ -147,6 +149,6 @@ tests/                  # Playwright E2E tests
   fixtures/             # Test fixtures (authenticated sessions)
   helpers/              # Test data helpers
 drizzle/                # Generated migration files
-.github/workflows/      # GitHub Actions CI/CD
+.github/workflows/      # smoke.yml, full-suite.yml (+ BRANCH_PROTECTION.md)
 proxy.ts                # Next.js 16 middleware (route protection)
 ```

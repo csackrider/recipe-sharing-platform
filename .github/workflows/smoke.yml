@@ -4,13 +4,31 @@ on:
   pull_request:
     branches: [dev]
 
+# Default: least privilege; merge job grants write. Artifacts need actions: write.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
+  actions: write
+
+concurrency:
+  group: smoke-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
+  # Public repos: fork PRs must not run Playwright or merge (abuse / cost).
+  reject-fork-pr:
+    name: Reject fork PRs
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fork PRs cannot run workflows here
+        run: |
+          echo "::error::Open a branch in this repository and use a same-repo pull request. Fork PRs are not run."
+          exit 1
+
   smoke:
-    name: Smoke Tests
+    name: Run smoke tests
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -56,10 +74,20 @@ jobs:
   auto-merge:
     name: Auto-merge to dev
     needs: smoke
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - name: Merge PR into dev
-        run: gh pr merge ${{ github.event.pull_request.number }} --auto --merge --delete-branch
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/merge" \
+            --method PUT \
+            -f merge_method=merge
+          BRANCH="${{ github.head_ref }}"
+          BRANCH_ENC="${BRANCH//\//%2F}"
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH_ENC}"
