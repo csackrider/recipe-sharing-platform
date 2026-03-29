@@ -60,6 +60,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Merge PR into dev
-        run: gh pr merge ${{ github.event.pull_request.number }} --merge --delete-branch
+        run: gh pr merge ${{ github.event.pull_request.number }} --auto --merge --delete-branch
         env:
           GH_TOKEN: ${{ github.token }}
