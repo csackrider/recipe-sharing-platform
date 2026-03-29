@@ -6,7 +6,7 @@ const USER2_STATE = path.join(__dirname, '.auth/user2.json')
 
 export { USER1_STATE, USER2_STATE }
 
-setup('authenticate primary user', async ({ page }) => {
+setup('authenticate primary user', { tag: '@smoke' }, async ({ page }) => {
   await page.goto('/auth/login')
   await page.getByLabel(/email/i).fill(process.env.TEST_USER_EMAIL!)
   await page.getByLabel(/password/i).fill(process.env.TEST_USER_PASSWORD!)
@@ -16,7 +16,7 @@ setup('authenticate primary user', async ({ page }) => {
   await page.context().storageState({ path: USER1_STATE })
 })
 
-setup('authenticate secondary user', async ({ page }) => {
+setup('authenticate secondary user', { tag: '@smoke' }, async ({ page }) => {
   await page.goto('/auth/login')
   await page.getByLabel(/email/i).fill(process.env.TEST_USER_2_EMAIL!)
   await page.getByLabel(/password/i).fill(process.env.TEST_USER_2_PASSWORD!)

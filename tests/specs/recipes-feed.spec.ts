@@ -9,7 +9,7 @@ test.describe('Recipe feed — search and filters', () => {
     await recipesPage.gotoFeed()
   })
 
-  test('search by keyword updates URL with ?q= param and shows results', async ({ page }) => {
+  test('search by keyword updates URL with ?q= param and shows results', { tag: '@smoke' }, async ({ page }) => {
     await recipesPage.search('chicken')
     await recipesPage.assertUrlHasParam('q', 'chicken')
   })

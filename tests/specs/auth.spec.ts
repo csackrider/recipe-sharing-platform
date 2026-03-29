@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { LoginPage } from '../pages/LoginPage'
 
 test.describe('Authentication — happy path', () => {
-  test('valid credentials redirect to home', async ({ page }) => {
+  test('valid credentials redirect to home', { tag: '@smoke' }, async ({ page }) => {
     const loginPage = new LoginPage(page)
     await loginPage.login(
       process.env.TEST_USER_EMAIL!,
