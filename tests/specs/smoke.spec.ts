@@ -3,7 +3,7 @@ import { RecipesPage } from '../pages/RecipesPage'
 import { PublicProfilePage } from '../pages/PublicProfilePage'
 import { getTestUsername } from '../helpers/test-data'
 
-test.describe('Smoke — public routes load without error', () => {
+test.describe('Smoke — public routes load without error', { tag: '@smoke' }, () => {
   test('home page loads', async ({ page }) => {
     const response = await page.goto('/')
     await expect(response?.status()).toBeLessThan(400)

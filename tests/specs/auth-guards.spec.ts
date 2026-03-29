@@ -15,7 +15,7 @@ const protectedRoutes: string[] = [
 ]
 
 for (const route of protectedRoutes) {
-  test(`unauthenticated user on "${route}" is redirected to /auth/login`, async ({ page }) => {
+  test(`unauthenticated user on "${route}" is redirected to /auth/login`, { tag: '@smoke' }, async ({ page }) => {
     const loginPage = new LoginPage(page)
     await page.goto(route)
     await page.waitForLoadState('networkidle')
