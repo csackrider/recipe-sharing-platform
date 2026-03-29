@@ -1,0 +1,65 @@
+name: Smoke Tests
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  smoke:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      CI: true
+      AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      AUTH_TRUST_HOST: true
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Set up database
+        run: |
+          mkdir -p data
+          npm run db:push
+          npm run db:seed
+
+      - name: Copy test env
+        run: cp tests/.env.test.example tests/.env.test
+
+      - name: Run smoke tests (Chromium only)
+        run: npx playwright test --grep @smoke --project=chromium
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: playwright-report-smoke
+          path: playwright-report/
+          retention-days: 7
+
+  auto-merge:
+    name: Auto-merge to dev
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Merge PR into dev
+        run: gh pr merge ${{ github.event.pull_request.number }} --merge --delete-branch
+        env:
+          GH_TOKEN: ${{ github.token }}

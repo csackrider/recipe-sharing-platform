@@ -1,0 +1,120 @@
+name: Full E2E Suite
+
+# Runs after Smoke Tests complete (auto-promote dev → main),
+# or on direct PRs to main.
+on:
+  workflow_run:
+    workflows: ["Smoke Tests"]
+    types: [completed]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  full:
+    name: Full E2E Suite
+    if: >
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      CI: true
+      AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      AUTH_TRUST_HOST: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && 'dev' || '' }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Set up database
+        run: |
+          mkdir -p data
+          npm run db:push
+          npm run db:seed
+
+      - name: Copy test env
+        run: cp tests/.env.test.example tests/.env.test
+
+      - name: Run full test suite
+        run: npx playwright test
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: playwright-report-full
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: test-results
+          path: test-results/
+          retention-days: 7
+
+  promote:
+    name: Promote dev to main
+    needs: full
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Check if dev is ahead of main
+        id: check
+        run: |
+          git fetch origin main
+          AHEAD=$(git rev-list --count origin/main..origin/dev)
+          echo "ahead=$AHEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Create PR and merge to main
+        if: steps.check.outputs.ahead != '0'
+        run: |
+          pr_number=$(gh pr list --base main --head dev --json number --jq '.[0].number // empty')
+
+          if [ -z "$pr_number" ]; then
+            pr_url=$(gh pr create --base main --head dev \
+              --title "Promote dev to main" \
+              --body "Auto-promoted after full E2E suite passed on dev.")
+            pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
+          fi
+
+          gh pr merge "$pr_number" --merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  auto-merge-pr:
+    name: Auto-merge PR to main
+    needs: full
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Merge PR into main
+        run: gh pr merge ${{ github.event.pull_request.number }} --merge
+        env:
+          GH_TOKEN: ${{ github.token }}
