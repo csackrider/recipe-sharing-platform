@@ -103,7 +103,11 @@ jobs:
             pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
           fi
 
-          gh pr merge "$pr_number" --merge
+          # REST merge avoids gh's GraphQL auto-merge path (fails with "clean status"
+          # when the base branch has no protection rules).
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/merge" \
+            --method PUT \
+            -f merge_method=merge
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -115,6 +119,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Merge PR into main
-        run: gh pr merge ${{ github.event.pull_request.number }} --merge
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/merge" \
+            --method PUT \
+            -f merge_method=merge
         env:
           GH_TOKEN: ${{ github.token }}
