@@ -8,7 +8,7 @@ import { USER1_STATE } from '../../playwright.config'
 // ── Create ─────────────────────────────────────────────────────────────────
 
 test.describe('Recipe CRUD — create', () => {
-  test('valid form without image redirects to new recipe detail page', async ({ authenticatedPage }) => {
+  test('valid form without image redirects to new recipe detail page', { tag: '@smoke' }, async ({ authenticatedPage }) => {
     const formPage = new RecipeFormPage(authenticatedPage)
     await formPage.gotoNewRecipe()
 

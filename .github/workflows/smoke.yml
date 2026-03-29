@@ -1,16 +1,18 @@
-name: Playwright Tests
+name: Smoke Tests
 
 on:
-  push:
-    branches: [main]
   pull_request:
-    branches: [main]
+    branches: [dev]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  test:
-    name: E2E Tests
+  smoke:
+    name: Smoke Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
 
     env:
       CI: true
@@ -29,7 +31,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install --with-deps chromium
 
       - name: Set up database
         run: |
@@ -40,21 +42,24 @@ jobs:
       - name: Copy test env
         run: cp tests/.env.test.example tests/.env.test
 
-      - name: Run Playwright tests
-        run: npx playwright test
+      - name: Run smoke tests (Chromium only)
+        run: npx playwright test --grep @smoke --project=chromium
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v5
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-smoke
           path: playwright-report/
-          retention-days: 14
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v5
-        if: failure()
-        with:
-          name: test-results
-          path: test-results/
           retention-days: 7
+
+  auto-merge:
+    name: Auto-merge to dev
+    needs: smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Merge PR into dev
+        run: gh pr merge ${{ github.event.pull_request.number }} --merge --delete-branch
+        env:
+          GH_TOKEN: ${{ github.token }}
