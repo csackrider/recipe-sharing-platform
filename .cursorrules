@@ -250,7 +250,7 @@ export async function createRecipe(data: unknown) {
 - Tests run across Chromium (desktop + Android) and WebKit (iPhone + iPad).
 - Use the `setup` project for authentication state; other projects depend on it.
 - Never hardcode test user credentials in specs — read from `process.env`.
-- GitHub Actions runs the full suite on PRs and pushes to `main`.
+- GitHub Actions: smoke tests on PRs to `dev` (`smoke.yml`); full suite after smoke or on PRs to `main` (`full-suite.yml`). See `.github/BRANCH_PROTECTION.md` for public-repo setup.
 
 ---
 

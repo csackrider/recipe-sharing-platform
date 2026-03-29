@@ -4,22 +4,44 @@ name: Full E2E Suite
 # or on direct PRs to main.
 on:
   workflow_run:
-    workflows: ["Smoke Tests"]
+    workflows: ['Smoke Tests']
     types: [completed]
   pull_request:
     branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
+  actions: write
+
+concurrency:
+  group: full-e2e-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+  cancel-in-progress: true
 
 jobs:
-  full:
-    name: Full E2E Suite
+  reject-fork-pr-to-main:
+    name: Reject fork PRs
     if: >
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name == 'pull_request')
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fork PRs cannot run workflows here
+        run: |
+          echo "::error::Open a branch in this repository and use a same-repo pull request. Fork PRs are not run."
+          exit 1
+
+  full:
+    name: Run full E2E suite
+    if: >
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'pull_request'
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -76,8 +98,14 @@ jobs:
   promote:
     name: Promote dev to main
     needs: full
-    if: github.event_name == 'workflow_run'
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -103,8 +131,6 @@ jobs:
             pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
           fi
 
-          # REST merge avoids gh's GraphQL auto-merge path (fails with "clean status"
-          # when the base branch has no protection rules).
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${pr_number}/merge" \
             --method PUT \
             -f merge_method=merge
@@ -114,8 +140,13 @@ jobs:
   auto-merge-pr:
     name: Auto-merge PR to main
     needs: full
-    if: github.event_name == 'pull_request'
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
       - name: Merge PR into main
