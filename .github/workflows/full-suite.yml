@@ -103,7 +103,7 @@ jobs:
             pr_number=$(echo "$pr_url" | grep -oE '[0-9]+$')
           fi
 
-          gh pr merge "$pr_number" --merge
+          gh pr merge "$pr_number" --auto --merge
         env:
           GH_TOKEN: ${{ github.token }}
 
@@ -115,6 +115,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Merge PR into main
-        run: gh pr merge ${{ github.event.pull_request.number }} --merge
+        run: gh pr merge ${{ github.event.pull_request.number }} --auto --merge
         env:
           GH_TOKEN: ${{ github.token }}
