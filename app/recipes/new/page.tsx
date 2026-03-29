@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/lib/auth'
 import RecipeForm from '@/components/recipes/RecipeForm'
 
 export const metadata: Metadata = {
@@ -8,12 +8,8 @@ export const metadata: Metadata = {
 }
 
 export default async function NewRecipePage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) redirect('/auth/login')
+  const session = await auth()
+  if (!session?.user) redirect('/auth/login')
 
   return (
     <div className="min-h-screen bg-zinc-50">

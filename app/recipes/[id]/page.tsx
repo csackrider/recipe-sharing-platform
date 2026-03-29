@@ -3,7 +3,10 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Clock, ChefHat, Tag, Pencil } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { eq, and, count as sqlCount } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { recipes, users, likes, savedRecipes } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import DeleteRecipeButton from '@/components/recipes/DeleteRecipeButton'
 import LikeButton from '@/components/recipes/LikeButton'
@@ -15,9 +18,8 @@ interface RecipePageProps {
 
 export async function generateMetadata({ params }: RecipePageProps): Promise<Metadata> {
   const { id } = await params
-  const supabase = await createClient()
-  const { data } = await supabase.from('recipes').select('title').eq('id', id).single()
-  return { title: data ? `${data.title} | Recipe Share` : 'Recipe | Recipe Share' }
+  const [recipe] = await db.select({ title: recipes.title }).from(recipes).where(eq(recipes.id, id)).limit(1)
+  return { title: recipe ? `${recipe.title} | Recipe Share` : 'Recipe | Recipe Share' }
 }
 
 const difficultyStyles = {
@@ -28,53 +30,71 @@ const difficultyStyles = {
 
 export default async function RecipePage({ params }: RecipePageProps) {
   const { id } = await params
-  const supabase = await createClient()
+  const session = await auth()
+  const userId = session?.user?.id
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const [recipeRow] = await db
+    .select({
+      id: recipes.id,
+      userId: recipes.userId,
+      title: recipes.title,
+      ingredients: recipes.ingredients,
+      instructions: recipes.instructions,
+      cookingTime: recipes.cookingTime,
+      difficulty: recipes.difficulty,
+      category: recipes.category,
+      imageUrl: recipes.imageUrl,
+      createdAt: recipes.createdAt,
+      authorUsername: users.username,
+      authorDisplayName: users.displayName,
+    })
+    .from(recipes)
+    .leftJoin(users, eq(recipes.userId, users.id))
+    .where(eq(recipes.id, id))
+    .limit(1)
 
-  const { data: recipe, error } = await supabase
-    .from('recipes')
-    .select('*, profiles(username, display_name)')
-    .eq('id', id)
-    .single()
+  if (!recipeRow) notFound()
 
-  if (error || !recipe) notFound()
+  const [likeCountResult] = await db
+    .select({ value: sqlCount() })
+    .from(likes)
+    .where(eq(likes.recipeId, id))
 
-  // Fetch like count and user interaction state in parallel
-  const [likeCountResult, userLikeResult, userSaveResult] = await Promise.all([
-    supabase
-      .from('likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('recipe_id', id),
-    user
-      ? supabase.from('likes').select('id').eq('recipe_id', id).eq('user_id', user.id).maybeSingle()
-      : Promise.resolve({ data: null }),
-    user
-      ? supabase.from('saved_recipes').select('id').eq('recipe_id', id).eq('user_id', user.id).maybeSingle()
-      : Promise.resolve({ data: null }),
-  ])
+  const likeCount = likeCountResult?.value ?? 0
 
-  const likeCount = likeCountResult.count ?? 0
-  const userLiked = !!userLikeResult.data
-  const userSaved = !!userSaveResult.data
+  let userLiked = false
+  let userSaved = false
 
-  const isOwner = user?.id === recipe.user_id
+  if (userId) {
+    const [likeRow] = await db
+      .select({ id: likes.id })
+      .from(likes)
+      .where(and(eq(likes.recipeId, id), eq(likes.userId, userId)))
+      .limit(1)
+    userLiked = !!likeRow
 
-  const profileData = recipe.profiles as { username: string; display_name: string | null } | null
-  const author = profileData?.display_name ?? profileData?.username ?? 'Unknown'
-  const authorUsername = profileData?.username
-  const difficulty = recipe.difficulty as 'easy' | 'medium' | 'hard'
+    const [saveRow] = await db
+      .select({ id: savedRecipes.id })
+      .from(savedRecipes)
+      .where(and(eq(savedRecipes.recipeId, id), eq(savedRecipes.userId, userId)))
+      .limit(1)
+    userSaved = !!saveRow
+  }
+
+  const isOwner = userId === recipeRow.userId
+  const author = recipeRow.authorDisplayName ?? recipeRow.authorUsername ?? 'Unknown'
+  const authorUsername = recipeRow.authorUsername
+  const difficulty = recipeRow.difficulty as 'easy' | 'medium' | 'hard'
 
   return (
     <div className="min-h-screen bg-zinc-50">
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
         <article className="rounded-xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
-          {/* Hero image */}
-          {recipe.image_url && (
+          {recipeRow.imageUrl && (
             <div className="relative h-64 w-full">
               <Image
-                src={recipe.image_url}
-                alt={recipe.title}
+                src={recipeRow.imageUrl}
+                alt={recipeRow.title}
                 fill
                 className="object-cover"
                 priority
@@ -84,13 +104,12 @@ export default async function RecipePage({ params }: RecipePageProps) {
           )}
 
           <div className="p-6 sm:p-8">
-            {/* Header */}
             <header className="mb-6">
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                {recipe.category && (
+                {recipeRow.category && (
                   <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-0.5 text-xs font-medium text-orange-700">
                     <Tag className="h-3 w-3" />
-                    {recipe.category}
+                    {recipeRow.category}
                   </span>
                 )}
                 <span
@@ -105,7 +124,7 @@ export default async function RecipePage({ params }: RecipePageProps) {
 
               <div className="flex items-start justify-between gap-4">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-3xl">
-                  {recipe.title}
+                  {recipeRow.title}
                 </h1>
                 {isOwner && (
                   <div className="flex shrink-0 items-center gap-2">
@@ -124,7 +143,7 @@ export default async function RecipePage({ params }: RecipePageProps) {
               <div className="mt-3 flex flex-wrap items-center gap-4 text-sm text-zinc-500">
                 <span className="flex items-center gap-1.5">
                   <Clock className="h-4 w-4" />
-                  {recipe.cooking_time} min
+                  {recipeRow.cookingTime} min
                 </span>
                 <span className="flex items-center gap-1.5">
                   <ChefHat className="h-4 w-4" />
@@ -137,7 +156,7 @@ export default async function RecipePage({ params }: RecipePageProps) {
                   )}
                 </span>
                 <span>
-                  {new Date(recipe.created_at).toLocaleDateString('en-US', {
+                  {new Date(recipeRow.createdAt).toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
                     year: 'numeric',
@@ -145,29 +164,27 @@ export default async function RecipePage({ params }: RecipePageProps) {
                 </span>
               </div>
 
-              {/* Like / Save */}
               <div className="mt-4 flex items-center gap-2">
                 <LikeButton
                   recipeId={id}
                   initialLiked={userLiked}
-                  initialCount={likeCount}
-                  userId={user?.id}
+                  initialCount={Number(likeCount)}
+                  userId={userId}
                 />
                 <SaveButton
                   recipeId={id}
                   initialSaved={userSaved}
-                  userId={user?.id}
+                  userId={userId}
                 />
               </div>
             </header>
 
             <hr className="mb-6 border-zinc-100" />
 
-            {/* Ingredients */}
             <section className="mb-8">
               <h2 className="mb-3 text-base font-semibold text-zinc-900">Ingredients</h2>
               <ul className="space-y-2">
-                {(recipe.ingredients as string[]).map((ingredient, i) => (
+                {(recipeRow.ingredients as string[]).map((ingredient, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-zinc-700">
                     <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-orange-400" />
                     {ingredient}
@@ -176,11 +193,10 @@ export default async function RecipePage({ params }: RecipePageProps) {
               </ul>
             </section>
 
-            {/* Instructions */}
             <section>
               <h2 className="mb-3 text-base font-semibold text-zinc-900">Instructions</h2>
               <div className="space-y-3">
-                {recipe.instructions.split('\n').filter(Boolean).map((step, i) => (
+                {recipeRow.instructions.split('\n').filter(Boolean).map((step, i) => (
                   <p key={i} className="text-sm leading-relaxed text-zinc-700">{step}</p>
                 ))}
               </div>

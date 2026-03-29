@@ -1,21 +1,21 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { eq, and } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { likes, savedRecipes } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 
 type ActionResult = { error: string } | null
 
 export async function likeRecipe(recipeId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in to like a recipe.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in to like a recipe.' }
 
-  const { error } = await supabase
-    .from('likes')
-    .insert({ user_id: user.id, recipe_id: recipeId })
-
-  if (error) {
-    console.error('[likeRecipe]', error.message)
+  try {
+    await db.insert(likes).values({ userId: session.user.id, recipeId })
+  } catch (err) {
+    console.error('[likeRecipe]', err)
     return { error: 'Failed to like recipe.' }
   }
 
@@ -24,18 +24,15 @@ export async function likeRecipe(recipeId: string): Promise<ActionResult> {
 }
 
 export async function unlikeRecipe(recipeId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in.' }
 
-  const { error } = await supabase
-    .from('likes')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('recipe_id', recipeId)
-
-  if (error) {
-    console.error('[unlikeRecipe]', error.message)
+  try {
+    await db
+      .delete(likes)
+      .where(and(eq(likes.userId, session.user.id), eq(likes.recipeId, recipeId)))
+  } catch (err) {
+    console.error('[unlikeRecipe]', err)
     return { error: 'Failed to unlike recipe.' }
   }
 
@@ -44,16 +41,13 @@ export async function unlikeRecipe(recipeId: string): Promise<ActionResult> {
 }
 
 export async function saveRecipe(recipeId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in to save a recipe.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in to save a recipe.' }
 
-  const { error } = await supabase
-    .from('saved_recipes')
-    .insert({ user_id: user.id, recipe_id: recipeId })
-
-  if (error) {
-    console.error('[saveRecipe]', error.message)
+  try {
+    await db.insert(savedRecipes).values({ userId: session.user.id, recipeId })
+  } catch (err) {
+    console.error('[saveRecipe]', err)
     return { error: 'Failed to save recipe.' }
   }
 
@@ -63,18 +57,15 @@ export async function saveRecipe(recipeId: string): Promise<ActionResult> {
 }
 
 export async function unsaveRecipe(recipeId: string): Promise<ActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in.' }
 
-  const { error } = await supabase
-    .from('saved_recipes')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('recipe_id', recipeId)
-
-  if (error) {
-    console.error('[unsaveRecipe]', error.message)
+  try {
+    await db
+      .delete(savedRecipes)
+      .where(and(eq(savedRecipes.userId, session.user.id), eq(savedRecipes.recipeId, recipeId)))
+  } catch (err) {
+    console.error('[unsaveRecipe]', err)
     return { error: 'Failed to unsave recipe.' }
   }
 

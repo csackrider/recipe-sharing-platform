@@ -3,7 +3,10 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Clock, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { eq, desc } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { users, recipes, savedRecipes } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import EditProfileForm from '@/components/profile/EditProfileForm'
 import ChangePasswordForm from '@/components/profile/ChangePasswordForm'
@@ -26,48 +29,48 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
   const { tab } = await searchParams
   const activeTab = tab === 'saved' ? 'saved' : 'recipes'
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  const session = await auth()
+  if (!session?.user?.id) redirect('/auth/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  const [profile] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1)
 
-  // Fetch my recipes or saved recipes depending on active tab
-  const [myRecipesResult, savedRecipesResult] = await Promise.all([
-    supabase
-      .from('recipes')
-      .select('id, title, cooking_time, difficulty, category, created_at, image_url')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false }),
-    activeTab === 'saved'
-      ? supabase
-          .from('saved_recipes')
-          .select('recipe_id, recipes(id, title, cooking_time, difficulty, category, created_at, image_url)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-      : Promise.resolve({ data: null }),
-  ])
+  const myRecipes = await db
+    .select({
+      id: recipes.id,
+      title: recipes.title,
+      cookingTime: recipes.cookingTime,
+      difficulty: recipes.difficulty,
+      category: recipes.category,
+      createdAt: recipes.createdAt,
+      imageUrl: recipes.imageUrl,
+    })
+    .from(recipes)
+    .where(eq(recipes.userId, session.user.id))
+    .orderBy(desc(recipes.createdAt))
 
-  const myRecipes = myRecipesResult.data ?? []
   const recipeCount = myRecipes.length
 
-  type SavedRow = {
-    recipe_id: string
-    recipes: {
-      id: string
-      title: string
-      cooking_time: number
-      difficulty: string
-      category: string | null
-      created_at: string
-      image_url: string | null
-    } | null
+  let savedRecipeRows: typeof myRecipes = []
+  if (activeTab === 'saved') {
+    savedRecipeRows = await db
+      .select({
+        id: recipes.id,
+        title: recipes.title,
+        cookingTime: recipes.cookingTime,
+        difficulty: recipes.difficulty,
+        category: recipes.category,
+        createdAt: recipes.createdAt,
+        imageUrl: recipes.imageUrl,
+      })
+      .from(savedRecipes)
+      .innerJoin(recipes, eq(savedRecipes.recipeId, recipes.id))
+      .where(eq(savedRecipes.userId, session.user.id))
+      .orderBy(desc(savedRecipes.createdAt))
   }
-  const savedRecipes = (savedRecipesResult.data as SavedRow[] | null) ?? []
 
   const tabLinkClass = (active: boolean) =>
     cn(
@@ -76,10 +79,10 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
     )
 
   const RecipeCard = ({
-    id, title, cooking_time, difficulty, category, image_url,
+    id, title, cookingTime, difficulty, category, imageUrl,
   }: {
-    id: string; title: string; cooking_time: number
-    difficulty: string; category: string | null; image_url: string | null
+    id: string; title: string; cookingTime: number
+    difficulty: string; category: string | null; imageUrl: string | null
   }) => {
     const diff = difficulty as 'easy' | 'medium' | 'hard'
     return (
@@ -87,9 +90,9 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
         href={`/recipes/${id}`}
         className="group flex flex-col rounded-xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md overflow-hidden"
       >
-        {image_url ? (
+        {imageUrl ? (
           <div className="relative h-28 w-full">
-            <Image src={image_url} alt={title} fill className="object-cover"
+            <Image src={imageUrl} alt={title} fill className="object-cover"
               sizes="(max-width: 640px) 100vw, 50vw" />
           </div>
         ) : (
@@ -112,7 +115,7 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
           </h2>
           <span className="flex items-center gap-1 text-xs text-zinc-500">
             <Clock className="h-3.5 w-3.5" />
-            {cooking_time} min
+            {cookingTime} min
           </span>
         </div>
       </Link>
@@ -124,9 +127,7 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
 
-          {/* Left — profile sidebar */}
           <aside className="space-y-6">
-            {/* Avatar + name */}
             <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 text-orange-600">
@@ -134,7 +135,7 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
                 </div>
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-zinc-900">
-                    {profile?.display_name ?? profile?.username ?? 'No name set'}
+                    {profile?.displayName ?? profile?.username ?? 'No name set'}
                   </p>
                   <p className="truncate text-xs text-zinc-400">@{profile?.username}</p>
                 </div>
@@ -154,25 +155,22 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
               </div>
             </div>
 
-            {/* Edit profile */}
             <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-sm font-semibold text-zinc-900">Edit profile</h2>
               <EditProfileForm
                 defaultValues={{
-                  display_name: profile?.display_name ?? '',
+                  display_name: profile?.displayName ?? '',
                   bio: profile?.bio ?? '',
                 }}
               />
             </div>
 
-            {/* Change password */}
             <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
               <h2 className="mb-4 text-sm font-semibold text-zinc-900">Change password</h2>
               <ChangePasswordForm />
             </div>
           </aside>
 
-          {/* Right — recipes */}
           <main>
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-zinc-50 p-1">
@@ -209,11 +207,9 @@ export default async function MyProfilePage({ searchParams }: MyProfilePageProps
                 </div>
               )
             ) : (
-              savedRecipes.length > 0 ? (
+              savedRecipeRows.length > 0 ? (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {savedRecipes
-                    .filter((s) => s.recipes !== null)
-                    .map((s) => <RecipeCard key={s.recipe_id} {...s.recipes!} />)}
+                  {savedRecipeRows.map((r) => <RecipeCard key={r.id} {...r} />)}
                 </div>
               ) : (
                 <div className="rounded-xl border border-dashed border-zinc-300 bg-white py-16 text-center">

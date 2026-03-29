@@ -1,11 +1,10 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ImagePlus, Loader2, Plus, Trash2, X } from 'lucide-react'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
 import { createRecipe, updateRecipe } from '@/lib/actions/recipes'
 import { recipeSchema, type RecipeFormValues } from '@/lib/validations/recipe'
 import { cn } from '@/lib/utils'
@@ -26,7 +25,6 @@ export default function RecipeForm({ recipeId, defaultValues, defaultImageUrl }:
   const [serverError, setServerError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // Image state
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -40,7 +38,7 @@ export default function RecipeForm({ recipeId, defaultValues, defaultImageUrl }:
     control,
     formState: { errors },
   } = useForm<RecipeFormValues>({
-    resolver: zodResolver(recipeSchema),
+    resolver: zodResolver(recipeSchema) as Resolver<RecipeFormValues>,
     defaultValues: { ingredients: [''], ...defaultValues },
   })
 
@@ -82,27 +80,17 @@ export default function RecipeForm({ recipeId, defaultValues, defaultImageUrl }:
       let imageUrl: string | null = clearExisting ? null : (defaultImageUrl ?? null)
 
       if (selectedFile) {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setServerError('You must be logged in.'); return }
+        const body = new FormData()
+        body.append('file', selectedFile)
 
-        const ext = selectedFile.name.split('.').pop() ?? 'jpg'
-        const path = `${user.id}/${crypto.randomUUID()}.${ext}`
+        const res = await fetch('/api/upload', { method: 'POST', body })
+        const json = await res.json()
 
-        const { error: uploadError } = await supabase.storage
-          .from('recipe-images')
-          .upload(path, selectedFile, { upsert: true })
-
-        if (uploadError) {
-          setServerError('Failed to upload image. Please try again.')
+        if (!res.ok) {
+          setServerError(json.error ?? 'Failed to upload image.')
           return
         }
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('recipe-images')
-          .getPublicUrl(path)
-
-        imageUrl = publicUrl
+        imageUrl = json.url
       }
 
       const result = isEditing

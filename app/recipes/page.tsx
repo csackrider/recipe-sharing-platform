@@ -3,7 +3,10 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { Clock, ChefHat } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { desc, like, eq, and } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { recipes, users } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 import RecipeFilters from '@/components/recipes/RecipeFilters'
 
@@ -17,17 +20,6 @@ const difficultyStyles = {
   hard: 'bg-red-50 text-red-700',
 }
 
-interface RecipeRow {
-  id: string
-  title: string
-  cooking_time: number
-  difficulty: string
-  category: string | null
-  created_at: string
-  image_url: string | null
-  profiles: { username: string; display_name: string | null } | null
-}
-
 interface RecipesPageProps {
   searchParams: Promise<{
     q?: string
@@ -38,37 +30,40 @@ interface RecipesPageProps {
 
 export default async function RecipesPage({ searchParams }: RecipesPageProps) {
   const { q, category, difficulty } = await searchParams
-  const supabase = await createClient()
+  const session = await auth()
 
-  const baseQuery = supabase
-    .from('recipes')
-    .select('id, title, cooking_time, difficulty, category, created_at, image_url, profiles(username, display_name)')
-    .order('created_at', { ascending: false })
-    .range(0, 11)
-
-  const withTitle = q?.trim() ? baseQuery.ilike('title', `%${q.trim()}%`) : baseQuery
-  const withCategory = category ? withTitle.eq('category', category) : withTitle
-  const withDifficulty = difficulty ? withCategory.eq('difficulty', difficulty) : withCategory
-
-  const { data: recipes, error } = await withDifficulty as unknown as {
-    data: RecipeRow[] | null
-    error: { message: string } | null
+  const conditions = []
+  if (q?.trim()) {
+    const escaped = q.trim().replace(/%/g, '\\%').replace(/_/g, '\\_')
+    conditions.push(like(recipes.title, `%${escaped}%`))
   }
+  if (category) conditions.push(eq(recipes.category, category))
+  if (difficulty) conditions.push(eq(recipes.difficulty, difficulty as 'easy' | 'medium' | 'hard'))
 
-  if (error) {
-    console.error('[RecipesPage]', error.message)
-  }
-
-  const { data: { user } } = await supabase.auth.getUser()
+  const recipeRows = await db
+    .select({
+      id: recipes.id,
+      title: recipes.title,
+      cookingTime: recipes.cookingTime,
+      difficulty: recipes.difficulty,
+      category: recipes.category,
+      createdAt: recipes.createdAt,
+      imageUrl: recipes.imageUrl,
+      authorUsername: users.username,
+      authorDisplayName: users.displayName,
+    })
+    .from(recipes)
+    .leftJoin(users, eq(recipes.userId, users.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(recipes.createdAt))
+    .limit(12)
 
   const hasFilters = !!(q || category || difficulty)
-  const resultCount = recipes?.length ?? 0
+  const resultCount = recipeRows.length
 
   return (
     <div className="min-h-screen bg-zinc-50">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-
-        {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
             {hasFilters ? 'Search results' : 'All recipes'}
@@ -82,21 +77,16 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
           </p>
         </div>
 
-        {/* Filters — wrapped in Suspense because useSearchParams needs it */}
         <div className="mb-8">
           <Suspense fallback={<div className="h-10 animate-pulse rounded-lg bg-zinc-100" />}>
             <RecipeFilters />
           </Suspense>
         </div>
 
-        {/* Grid */}
-        {recipes && recipes.length > 0 ? (
+        {recipeRows.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {recipes.map((recipe) => {
-              const profile = recipe.profiles as
-                | { username: string; display_name: string | null }
-                | null
-              const author = profile?.display_name ?? profile?.username ?? 'Unknown'
+            {recipeRows.map((recipe) => {
+              const author = recipe.authorDisplayName ?? recipe.authorUsername ?? 'Unknown'
               const diff = recipe.difficulty as 'easy' | 'medium' | 'hard'
 
               return (
@@ -105,10 +95,10 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
                   href={`/recipes/${recipe.id}`}
                   className="group flex flex-col rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md"
                 >
-                  {recipe.image_url ? (
+                  {recipe.imageUrl ? (
                     <div className="relative mb-4 h-24 w-full overflow-hidden rounded-lg">
                       <Image
-                        src={recipe.image_url}
+                        src={recipe.imageUrl}
                         alt={recipe.title}
                         fill
                         className="object-cover"
@@ -140,7 +130,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
                   <div className="flex items-center gap-3 text-xs text-zinc-500">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
-                      {recipe.cooking_time} min
+                      {recipe.cookingTime} min
                     </span>
                     <span className="flex items-center gap-1">
                       <ChefHat className="h-3.5 w-3.5" />
@@ -168,7 +158,7 @@ export default async function RecipesPage({ searchParams }: RecipesPageProps) {
               <>
                 <p className="mb-1 text-sm font-medium text-zinc-600">No recipes yet</p>
                 <p className="mb-4 text-xs text-zinc-400">Be the first to share a recipe.</p>
-                {user ? (
+                {session?.user ? (
                   <Link
                     href="/recipes/new"
                     className="rounded-full bg-orange-500 px-4 py-2 text-sm font-medium text-white hover:bg-orange-600"

@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { recipes } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 import RecipeForm from '@/components/recipes/RecipeForm'
 
 interface EditRecipePageProps {
@@ -13,21 +16,17 @@ export const metadata: Metadata = {
 
 export default async function EditRecipePage({ params }: EditRecipePageProps) {
   const { id } = await params
-  const supabase = await createClient()
+  const session = await auth()
+  if (!session?.user) redirect('/auth/login')
 
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/auth/login')
+  const [recipe] = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, id))
+    .limit(1)
 
-  const { data: recipe, error } = await supabase
-    .from('recipes')
-    .select('*')
-    .eq('id', id)
-    .single()
-
-  if (error || !recipe) notFound()
-
-  // Only the owner can edit
-  if (recipe.user_id !== user.id) redirect(`/recipes/${id}`)
+  if (!recipe) notFound()
+  if (recipe.userId !== session.user.id) redirect(`/recipes/${id}`)
 
   return (
     <div className="min-h-screen bg-zinc-50">
@@ -44,11 +43,11 @@ export default async function EditRecipePage({ params }: EditRecipePageProps) {
         <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm sm:p-8">
           <RecipeForm
             recipeId={id}
-            defaultImageUrl={recipe.image_url}
+            defaultImageUrl={recipe.imageUrl}
             defaultValues={{
               title: recipe.title,
               instructions: recipe.instructions,
-              cooking_time: recipe.cooking_time,
+              cooking_time: recipe.cookingTime,
               difficulty: recipe.difficulty as 'easy' | 'medium' | 'hard',
               category: recipe.category ?? undefined,
               ingredients: (recipe.ingredients as string[]).length > 0

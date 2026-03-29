@@ -11,15 +11,24 @@ interface DeleteRecipeButtonProps {
 export default function DeleteRecipeButton({ recipeId }: DeleteRecipeButtonProps) {
   const [confirming, setConfirming] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
 
   if (confirming) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2">
+        {error && (
+          <p className="text-xs text-red-500">{error}</p>
+        )}
+        <div className="flex items-center gap-2">
         <span className="text-xs text-zinc-500">Are you sure?</span>
         <button
           onClick={() => {
+            setError(null)
             startTransition(async () => {
-              await deleteRecipe(recipeId)
+              const result = await deleteRecipe(recipeId)
+              if (result?.error) {
+                setError(typeof result.error === 'string' ? result.error : 'Failed to delete recipe.')
+              }
             })
           }}
           disabled={isPending}
@@ -39,6 +48,7 @@ export default function DeleteRecipeButton({ recipeId }: DeleteRecipeButtonProps
         >
           Cancel
         </button>
+        </div>
       </div>
     )
   }

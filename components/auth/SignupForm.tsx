@@ -44,17 +44,16 @@ export default function SignupForm() {
       <div className="rounded-xl bg-emerald-50 p-6 text-center">
         <CheckCircle2 className="mx-auto mb-3 h-10 w-10 text-emerald-500" />
         <h2 className="mb-1 text-base font-semibold text-zinc-900">
-          Check your inbox
+          Account created
         </h2>
         <p className="text-sm text-zinc-600">
-          We sent a confirmation link to your email address. Click it to
-          activate your account.
+          Your account has been created. You can now sign in.
         </p>
         <Link
           href="/auth/login"
           className="mt-4 inline-block text-sm font-medium text-orange-600 hover:text-orange-700"
         >
-          Back to login
+          Sign in
         </Link>
       </div>
     )

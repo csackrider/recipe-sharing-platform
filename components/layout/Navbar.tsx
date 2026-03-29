@@ -1,17 +1,14 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/lib/auth'
 import SignOutButton from '@/components/auth/SignOutButton'
 
 export default async function Navbar() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const session = await auth()
+  const user = session?.user
 
   return (
     <nav className="sticky top-0 z-50 border-b border-zinc-200 bg-white/90 backdrop-blur-sm">
       <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Brand */}
         <Link href="/" className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500 text-xs font-bold text-white">
             R
@@ -21,7 +18,6 @@ export default async function Navbar() {
           </span>
         </Link>
 
-        {/* Centre nav links */}
         <div className="hidden items-center gap-6 text-sm sm:flex">
           <Link
             href="/recipes"
@@ -39,7 +35,6 @@ export default async function Navbar() {
           )}
         </div>
 
-        {/* Right auth area */}
         <div className="flex items-center gap-2 text-sm">
           {user ? (
             <>

@@ -3,7 +3,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Clock, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { eq, desc } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { users, recipes } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
 
 interface PublicProfilePageProps {
@@ -23,30 +25,36 @@ export async function generateMetadata({ params }: PublicProfilePageProps): Prom
 
 export default async function PublicProfilePage({ params }: PublicProfilePageProps) {
   const { username } = await params
-  const supabase = await createClient()
 
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('username', username)
-    .single()
+  const [profile] = await db
+    .select()
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1)
 
-  if (error || !profile) notFound()
+  if (!profile) notFound()
 
-  const { data: recipes } = await supabase
-    .from('recipes')
-    .select('id, title, cooking_time, difficulty, category, created_at, image_url')
-    .eq('user_id', profile.id)
-    .order('created_at', { ascending: false })
+  const userRecipes = await db
+    .select({
+      id: recipes.id,
+      title: recipes.title,
+      cookingTime: recipes.cookingTime,
+      difficulty: recipes.difficulty,
+      category: recipes.category,
+      createdAt: recipes.createdAt,
+      imageUrl: recipes.imageUrl,
+    })
+    .from(recipes)
+    .where(eq(recipes.userId, profile.id))
+    .orderBy(desc(recipes.createdAt))
 
-  const recipeCount = recipes?.length ?? 0
+  const recipeCount = userRecipes.length
 
   return (
     <div className="min-h-screen bg-zinc-50">
       <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
 
-          {/* Profile card */}
           <aside>
             <div className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center gap-4">
@@ -55,7 +63,7 @@ export default async function PublicProfilePage({ params }: PublicProfilePagePro
                 </div>
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-zinc-900">
-                    {profile.display_name ?? profile.username}
+                    {profile.displayName ?? profile.username}
                   </p>
                   <p className="truncate text-xs text-zinc-400">@{profile.username}</p>
                 </div>
@@ -76,15 +84,14 @@ export default async function PublicProfilePage({ params }: PublicProfilePagePro
             </div>
           </aside>
 
-          {/* Recipes grid */}
           <main>
             <h1 className="mb-5 text-lg font-semibold text-zinc-900">
-              {profile.display_name ?? profile.username}&apos;s recipes
+              {profile.displayName ?? profile.username}&apos;s recipes
             </h1>
 
-            {recipes && recipes.length > 0 ? (
+            {userRecipes.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2">
-                {recipes.map((recipe) => {
+                {userRecipes.map((recipe) => {
                   const difficulty = recipe.difficulty as 'easy' | 'medium' | 'hard'
                   return (
                     <Link
@@ -92,10 +99,10 @@ export default async function PublicProfilePage({ params }: PublicProfilePagePro
                       href={`/recipes/${recipe.id}`}
                       className="group flex flex-col rounded-xl border border-zinc-200 bg-white shadow-sm transition-shadow hover:shadow-md overflow-hidden"
                     >
-                      {recipe.image_url ? (
+                      {recipe.imageUrl ? (
                         <div className="relative h-36 w-full">
                           <Image
-                            src={recipe.image_url}
+                            src={recipe.imageUrl}
                             alt={recipe.title}
                             fill
                             className="object-cover"
@@ -127,7 +134,7 @@ export default async function PublicProfilePage({ params }: PublicProfilePagePro
 
                         <span className="flex items-center gap-1 text-xs text-zinc-500">
                           <Clock className="h-3.5 w-3.5" />
-                          {recipe.cooking_time} min
+                          {recipe.cookingTime} min
                         </span>
                       </div>
                     </Link>

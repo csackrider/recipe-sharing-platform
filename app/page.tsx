@@ -76,7 +76,7 @@ export default function Home() {
             <div className="flex flex-wrap gap-4 text-xs text-zinc-500">
               <span>✓ Save and organize your own recipes</span>
               <span>✓ Simple ingredient lists &amp; steps</span>
-              <span>✓ Built with Next.js &amp; Supabase</span>
+              <span>✓ Built with Next.js &amp; Drizzle ORM</span>
             </div>
           </section>
 
@@ -120,7 +120,7 @@ export default function Home() {
         </div>
 
         <footer className="mt-16 border-t border-zinc-100 pt-4 text-xs text-zinc-500">
-          <p>Recipe Share · Built with Next.js, Tailwind CSS, and Supabase.</p>
+          <p>Recipe Share · Built with Next.js, Tailwind CSS, and Drizzle ORM.</p>
         </footer>
       </div>
     </div>

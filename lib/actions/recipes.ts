@@ -2,7 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { eq } from 'drizzle-orm'
+import { db } from '@/lib/db'
+import { recipes } from '@/lib/db/schema'
+import { auth } from '@/lib/auth'
 import { recipeSchema } from '@/lib/validations/recipe'
 
 export type RecipeActionResult = { error: string } | null
@@ -11,9 +14,8 @@ export async function createRecipe(
   data: unknown,
   imageUrl?: string
 ): Promise<RecipeActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in to create a recipe.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in to create a recipe.' }
 
   const parsed = recipeSchema.safeParse(data)
   if (!parsed.success) {
@@ -22,28 +24,30 @@ export async function createRecipe(
 
   const { title, instructions, cooking_time, difficulty, category, ingredients } = parsed.data
 
-  const { data: recipe, error } = await supabase
-    .from('recipes')
-    .insert({
-      user_id: user.id,
-      title,
-      instructions,
-      cooking_time,
-      difficulty,
-      category: category ?? null,
-      ingredients,
-      image_url: imageUrl ?? null,
-    })
-    .select('id')
-    .single()
+  let recipeId: string
+  try {
+    const [recipe] = await db
+      .insert(recipes)
+      .values({
+        userId: session.user.id,
+        title,
+        instructions,
+        cookingTime: cooking_time,
+        difficulty,
+        category: category ?? null,
+        ingredients,
+        imageUrl: imageUrl ?? null,
+      })
+      .returning({ id: recipes.id })
 
-  if (error) {
-    console.error('[createRecipe]', error.message)
+    recipeId = recipe.id
+  } catch (err) {
+    console.error('[createRecipe]', err)
     return { error: 'Failed to save recipe. Please try again.' }
   }
 
   revalidatePath('/recipes')
-  redirect(`/recipes/${recipe.id}`)
+  redirect(`/recipes/${recipeId}`)
 }
 
 export async function updateRecipe(
@@ -51,19 +55,17 @@ export async function updateRecipe(
   data: unknown,
   imageUrl?: string | null
 ): Promise<RecipeActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in to edit a recipe.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in to edit a recipe.' }
 
-  // Verify ownership before updating
-  const { data: existing, error: fetchError } = await supabase
-    .from('recipes')
-    .select('user_id')
-    .eq('id', id)
-    .single()
+  const [existing] = await db
+    .select({ userId: recipes.userId })
+    .from(recipes)
+    .where(eq(recipes.id, id))
+    .limit(1)
 
-  if (fetchError || !existing) return { error: 'Recipe not found.' }
-  if (existing.user_id !== user.id) return { error: 'You can only edit your own recipes.' }
+  if (!existing) return { error: 'Recipe not found.' }
+  if (existing.userId !== session.user.id) return { error: 'You can only edit your own recipes.' }
 
   const parsed = recipeSchema.safeParse(data)
   if (!parsed.success) {
@@ -75,20 +77,17 @@ export async function updateRecipe(
   const updatePayload: Record<string, unknown> = {
     title,
     instructions,
-    cooking_time,
+    cookingTime: cooking_time,
     difficulty,
     category: category ?? null,
     ingredients,
   }
-  if (imageUrl !== undefined) updatePayload.image_url = imageUrl
+  if (imageUrl !== undefined) updatePayload.imageUrl = imageUrl
 
-  const { error } = await supabase
-    .from('recipes')
-    .update(updatePayload)
-    .eq('id', id)
-
-  if (error) {
-    console.error('[updateRecipe]', error.message)
+  try {
+    await db.update(recipes).set(updatePayload).where(eq(recipes.id, id))
+  } catch (err) {
+    console.error('[updateRecipe]', err)
     return { error: 'Failed to update recipe. Please try again.' }
   }
 
@@ -98,24 +97,22 @@ export async function updateRecipe(
 }
 
 export async function deleteRecipe(id: string): Promise<RecipeActionResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'You must be logged in to delete a recipe.' }
+  const session = await auth()
+  if (!session?.user?.id) return { error: 'You must be logged in to delete a recipe.' }
 
-  // Verify ownership before deleting
-  const { data: existing, error: fetchError } = await supabase
-    .from('recipes')
-    .select('user_id')
-    .eq('id', id)
-    .single()
+  const [existing] = await db
+    .select({ userId: recipes.userId })
+    .from(recipes)
+    .where(eq(recipes.id, id))
+    .limit(1)
 
-  if (fetchError || !existing) return { error: 'Recipe not found.' }
-  if (existing.user_id !== user.id) return { error: 'You can only delete your own recipes.' }
+  if (!existing) return { error: 'Recipe not found.' }
+  if (existing.userId !== session.user.id) return { error: 'You can only delete your own recipes.' }
 
-  const { error } = await supabase.from('recipes').delete().eq('id', id)
-
-  if (error) {
-    console.error('[deleteRecipe]', error.message)
+  try {
+    await db.delete(recipes).where(eq(recipes.id, id))
+  } catch (err) {
+    console.error('[deleteRecipe]', err)
     return { error: 'Failed to delete recipe. Please try again.' }
   }
 
