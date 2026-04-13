@@ -31,8 +31,39 @@ jobs:
           echo "::error::Open a branch in this repository and use a same-repo pull request. Fork PRs are not run."
           exit 1
 
+  unit:
+    name: Unit tests
+    if: >
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'pull_request'
+      ) || (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && 'dev' || '' }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Vitest
+        run: npm run test:unit
+
   full:
     name: Run full E2E suite
+    needs: unit
     if: >
       (
         github.event_name == 'workflow_run' &&
