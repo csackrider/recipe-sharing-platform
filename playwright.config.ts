@@ -11,7 +11,7 @@ export default defineConfig({
   testDir: './tests/specs',
   fullyParallel: true,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? undefined : 3,
+  workers: process.env.CI ? undefined : undefined,
   timeout: 30_000,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
