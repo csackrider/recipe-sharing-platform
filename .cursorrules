@@ -242,7 +242,14 @@ export async function createRecipe(data: unknown) {
 
 ---
 
-## Testing (Playwright)
+## Testing
+
+### Unit (Vitest)
+
+- Unit tests live in `/tests/unit/` as `*.test.ts` (Zod validations, `cn()`, pure helpers).
+- Run with `npm run test:unit`. Config: `vitest.config.mjs`.
+
+### Playwright (E2E)
 
 - E2E tests live in `/tests/specs/` with Page Object Model classes in `/tests/pages/`.
 - Test fixtures for authenticated sessions are in `/tests/fixtures/`.

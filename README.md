@@ -72,10 +72,24 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm run db:studio` | Open Drizzle Studio (database browser) |
 | `npm run test` | Run Playwright E2E tests |
 | `npm run test:ui` | Run Playwright tests with UI |
+| `npm run test:unit` | Run Vitest unit tests (once) |
+| `npm run test:unit:watch` | Run Vitest in watch mode |
 
 ## Testing
 
-### Running Tests Locally
+### Unit tests (Vitest)
+
+Validates Zod schemas in `lib/validations/`, `cn()` in `lib/utils.ts`, and other pure logic. No database or browser required.
+
+```bash
+npm run test:unit
+# or watch mode during development
+npm run test:unit:watch
+```
+
+Tests live under `tests/unit/**/*.test.ts`. Configuration: `vitest.config.mjs`.
+
+### E2E tests (Playwright)
 
 ```bash
 # Set up the test environment
@@ -88,10 +102,10 @@ npm run db:seed
 # Install Playwright browsers
 npx playwright install --with-deps chromium webkit
 
-# Run all tests
+# Run all E2E tests
 npm run test
 
-# Run tests with the Playwright UI
+# Run Playwright with UI
 npm run test:ui
 ```
 
@@ -113,8 +127,8 @@ GitHub Actions workflows (see `.github/workflows/`):
 
 | Workflow | When | What |
 |---|---|---|
-| `smoke.yml` | Pull request to `dev` | Fast `@smoke` tests (Chromium), then auto-merge if green (same-repo PRs only) |
-| `full-suite.yml` | After smoke succeeds, or PR to `main` | Full Playwright suite; promotes `dev` → `main` when triggered by smoke |
+| `smoke.yml` | Pull request to `dev` | **Unit tests** job (Vitest), then **smoke tests** job (Playwright `@smoke`), then auto-merge if green (same-repo PRs only) |
+| `full-suite.yml` | After smoke succeeds, or PR to `main` | **Unit tests** job, then **full E2E** job (Playwright); promotes `dev` → `main` when triggered by smoke |
 
 HTML reports are uploaded as artifacts. On failure, test results (screenshots, traces) are also uploaded.
 
@@ -143,12 +157,13 @@ lib/
 types/                  # TypeScript type definitions
 data/                   # SQLite database (gitignored)
 public/uploads/         # Uploaded images (gitignored)
-tests/                  # Playwright E2E tests
-  specs/                # Test spec files
+tests/
+  unit/                 # Vitest unit tests (*.test.ts)
+  specs/                # Playwright spec files
   pages/                # Page Object Model classes
-  fixtures/             # Test fixtures (authenticated sessions)
-  helpers/              # Test data helpers
+  fixtures/             # Playwright fixtures (authenticated sessions)
+  helpers/              # Playwright test data helpers
 drizzle/                # Generated migration files
-.github/workflows/      # smoke.yml, full-suite.yml (+ BRANCH_PROTECTION.md)
+.github/workflows/      # smoke.yml, full-suite.yml
 proxy.ts                # Next.js 16 middleware (route protection)
 ```
