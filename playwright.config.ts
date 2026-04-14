@@ -10,13 +10,8 @@ export const USER2_STATE = path.join(__dirname, 'tests/.auth/user2.json')
 export default defineConfig({
   testDir: './tests/specs',
   fullyParallel: true,
-<<<<<<< Updated upstream
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? undefined : undefined,
-=======
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? undefined : 3,
->>>>>>> Stashed changes
   timeout: 30_000,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
